@@ -5,7 +5,7 @@ from product.models import Product, FeaturedCategory
 from product.serializers import ProductSerializer, ProductDetailSerializer, FeaturedCategorySerializer
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Product.objects.prefetch_related('variants__images')
+    queryset = Product.objects.prefetch_related('variants__images').order_by('-created_at')
     
     def get_serializer_class(self):
         if self.action == 'retrieve':
