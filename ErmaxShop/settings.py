@@ -28,9 +28,11 @@ SECRET_KEY = 'django-insecure-52%mw*+76p^^&9#7h^roh+7twyu@18h=+isxno72r(h!1bjqv#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    'https://yenecloset.vercel.app',
+]
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'yenebackend.vercel.app', 'yenecloset.vercel.app']
 
 
 
