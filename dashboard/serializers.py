@@ -24,8 +24,20 @@ class ProductAdminSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         variants_data = validated_data.pop('variants', [])
+    
+        # Create the main product first
         product = super().create(validated_data)
-        
+    
+        # If no variants provided, create a default one
+        if not variants_data:
+            variants_data = [{
+                "color": "Default",
+                "size": "One Size",
+                "extra_price": "0.00",
+                "images": []
+            }]
+    
+        # Create each variant and its images
         for variant_data in variants_data:
             images_data = variant_data.pop('images', [])
             variant = ProductVariant.objects.create(product=product, **variant_data)
@@ -33,7 +45,7 @@ class ProductAdminSerializer(serializers.ModelSerializer):
                 ProductVariantImage(product_variant=variant, **img_data)
                 for img_data in images_data
             ])
-        
+    
         return product
 
     def update(self, instance, validated_data):
