@@ -8,16 +8,10 @@ from decimal import Decimal
 class OrderItemSerializer(serializers.ModelSerializer):
     product_variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all(), required=False)
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), required=False)
-    
-    variant_detail = ProductVariantSerializer(source='product_variant', read_only=True)
-    product_detail = ProductSerializer(source='product', read_only=True)
 
     class Meta:
         model = OrderItem
-        fields = ['product_variant', 'product', 'variant_detail', 'product_detail', 'quantity']
-        extra_kwargs = {
-            'quantity': {'min_value': 1}
-        }
+        fields = ['product_variant', 'product', 'quantity']
 
     def validate(self, data):
         # Ensure at least one of `product_variant` or `product` is provided
@@ -27,7 +21,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True)
-    
+
     class Meta:
         model = Order
         fields = [
@@ -36,20 +30,20 @@ class OrderSerializer(serializers.ModelSerializer):
             'items', 'total_price'
         ]
         read_only_fields = ['order_code', 'status', 'paid_amount', 'total_price', 'user']
-    
+
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         order = Order.objects.create(**validated_data)
         total_price = Decimal('0.00')
-        
+
         for item_data in items_data:
-            # Determine if a product variant is selected
+            # Get either product_variant or product
             if item_data.get('product_variant'):
                 variant = item_data['product_variant']
                 price = variant.product.base_price + variant.extra_price
             elif item_data.get('product'):
                 product = item_data['product']
-                price = product.base_price  # Default price if product only
+                price = product.base_price  # Fallback to product price if variant is not provided
             else:
                 raise serializers.ValidationError("Item must have either a product or product_variant.")
 
