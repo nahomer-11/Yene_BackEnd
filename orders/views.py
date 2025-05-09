@@ -17,11 +17,11 @@ class OrderViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         user = request.user if request.user.is_authenticated else None
-        
+
         # Validate guest fields
         if not user:
             missing = [field for field in ['guest_name', 'guest_phone', 'guest_city', 'guest_address'] 
-                      if not data.get(field)]
+                       if not data.get(field)]
             if missing:
                 return Response(
                     {"detail": f"Missing required fields: {', '.join(missing)}"},
@@ -30,16 +30,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        
-        try:
-            self.perform_create(serializer)
-        except Exception as e:
-            logger.error(f"Order creation failed: {str(e)}")
-            return Response(
-                {"detail": "Error creating order"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
+        self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
