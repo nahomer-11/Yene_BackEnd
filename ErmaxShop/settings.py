@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+from corsheaders.defaults import default_headers
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -30,6 +31,10 @@ DEBUG = True
 
 CORS_ALLOWED_ORIGINS = [
     'https://yenecloset.vercel.app',
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'cache-control',
 ]
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'yenebackend.vercel.app', 'yenecloset.vercel.app']
