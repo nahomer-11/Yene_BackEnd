@@ -9,10 +9,16 @@ class ProductVariantImageSerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    model = ProductVariant.product.field.related_model 
+    variants = serializers.SerializerMethodField()
+
     class Meta:
         model = Product
-        fields = ['id', 'name', 'description', 'image_url', 'base_price']
+        fields = ['id', 'name', 'description', 'image_url', 'base_price', 'variants']
+
+    def get_variants(self, obj):
+        # Return serialized variants if they exist, or an empty list
+        variants = obj.variants.all()
+        return ProductVariantSerializer(variants, many=True).data
         
 class ProductVariantSerializer(serializers.ModelSerializer):
     images = ProductVariantImageSerializer(many=True, read_only=True)
