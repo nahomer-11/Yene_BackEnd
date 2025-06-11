@@ -51,7 +51,6 @@ class OrderSerializer(serializers.ModelSerializer):
             OrderItem.objects.create(
                 order=order,
                 product_variant=item_data.get('product_variant'),
-                product=item_data.get('product'),
                 quantity=quantity,
                 price_per_unit=price,
                 total_price=price * quantity
