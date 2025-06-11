@@ -20,43 +20,42 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return data
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True)
-
     class Meta:
         model = Order
-        fields = [
-            'order_code', 'status', 'payment_method', 'paid_amount', 'delivery_eta_days',
-            'customer_note', 'guest_name', 'guest_phone', 'guest_city', 'guest_address',
-            'items', 'total_price'
-        ]
-        read_only_fields = ['order_code', 'status', 'paid_amount', 'total_price', 'user']
+        fields = '__all__'  # or specify fields
 
     def create(self, validated_data):
-        items_data = validated_data.pop('items')
+        items_data = validated_data.pop("items", [])
         order = Order.objects.create(**validated_data)
-        total_price = Decimal('0.00')
 
         for item_data in items_data:
-            # Get either product_variant or product
-            if item_data.get('product_variant'):
-                variant = item_data['product_variant']
-                price = variant.product.base_price + variant.extra_price
-            elif item_data.get('product'):
-                product = item_data['product']
-                price = product.base_price  # Fallback to product price if variant is not provided
-            else:
-                raise serializers.ValidationError("Item must have either a product or product_variant.")
+            quantity = item_data.get("quantity", 1)
+            product_variant_id = item_data.get("product_variant")
+            product_id = item_data.get("product")
 
-            quantity = item_data['quantity']
+            if product_variant_id:
+                product_variant = ProductVariant.objects.get(id=product_variant_id)
+            else:
+                if not product_id:
+                    raise serializers.ValidationError("Product ID is required if product_variant is not provided.")
+
+                product = Product.objects.get(id=product_id)
+                # Get or create default variant for this product
+                product_variant, _ = ProductVariant.objects.get_or_create(
+                    product=product,
+                    name="Default",
+                    defaults={"extra_price": 0.00}
+                )
+
+            price = product_variant.product.price + (product_variant.extra_price or 0)
+            total_price = price * quantity
+
             OrderItem.objects.create(
                 order=order,
-                product_variant=item_data.get('product_variant'),
+                product_variant=product_variant,
                 quantity=quantity,
                 price_per_unit=price,
-                total_price=price * quantity
+                total_price=total_price
             )
-            total_price += price * quantity
 
-        order.total_price = total_price
-        order.save()
         return order
