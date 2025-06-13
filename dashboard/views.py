@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions
 from product.models import Product, ProductVariant, ProductVariantImage
 from orders.models import Order
-from orders.serializers import OrderSerializer  # Critical import added
+from orders.serializers import OrderSerializer
 from dashboard.serializers import (
     ProductAdminSerializer,
     ProductVariantAdminSerializer,
@@ -12,9 +12,9 @@ from user.serializers import UserSerializer
 
 class IsAdminUser(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user and request.user.is_staff
+        return bool(request.user and request.user.is_staff)
 
-# -------------------- Product Admin --------------------
+# Product admin endpoints
 class ProductAdminViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.prefetch_related('variants__images')
     serializer_class = ProductAdminSerializer
@@ -30,17 +30,14 @@ class ProductVariantImageAdminViewSet(viewsets.ModelViewSet):
     serializer_class = ProductVariantImageAdminSerializer
     permission_classes = [IsAdminUser]
 
-# -------------------- Order Admin --------------------
-
+# Order admin endpoint with nested detail
 class OrderAdminViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.prefetch_related(
-        'items__product_variant__product'
-    )
+    queryset = Order.objects.prefetch_related('items__product_variant__product')
     serializer_class = OrderSerializer
     permission_classes = [IsAdminUser]
     lookup_field = 'order_code'
 
-# -------------------- Registered User Admin --------------------
+# Registered users listing (admin only)
 class RegisteredUserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.filter(is_active=True)
     serializer_class = UserSerializer
