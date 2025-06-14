@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions
 from product.models import Product, ProductVariant, ProductVariantImage
 from orders.models import Order
-from orders.serializers import OrderSerializer
+from orders.serializers import OrderSerializer, OrderDetailSerializer
 from dashboard.serializers import (
     ProductAdminSerializer,
     ProductVariantAdminSerializer,
@@ -30,12 +30,16 @@ class ProductVariantImageAdminViewSet(viewsets.ModelViewSet):
     serializer_class = ProductVariantImageAdminSerializer
     permission_classes = [IsAdminUser]
 
-# Order admin endpoint with nested detail
+# ✅ Updated to return nested variant info in detail endpoint
 class OrderAdminViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.prefetch_related('items__product_variant__product')
-    serializer_class = OrderSerializer
+    queryset = Order.objects.prefetch_related('items__product_variant__product', 'items__product_variant__images')
     permission_classes = [IsAdminUser]
     lookup_field = 'order_code'
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return OrderDetailSerializer
+        return OrderSerializer
 
 # Registered users listing (admin only)
 class RegisteredUserViewSet(viewsets.ReadOnlyModelViewSet):
