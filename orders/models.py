@@ -77,5 +77,8 @@ class OrderItem(models.Model):
     price_per_unit = models.DecimalField(max_digits=10, decimal_places=2)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
 
-    def __str__(self):
-        return f"{self.quantity} x {self.product_variant} - {self.total_price}"
+    # Snapshot fields
+    product_name = models.CharField(max_length=255)
+    color = models.CharField(max_length=50)
+    size = models.CharField(max_length=20)
+    product_image = models.URLField(blank=True)
