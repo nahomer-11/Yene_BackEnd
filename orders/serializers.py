@@ -1,14 +1,17 @@
 from rest_framework import serializers
 from .models import Order, OrderItem
 from product.models import Product, ProductVariant
-from product.serializers import ProductVariantSerializer, ProductVariantAdminSerializer
-from django.db import transaction
+from product.serializers import ProductVariantAdminSerializer
 from decimal import Decimal
 
-# Used for create/update
+# ✅ Used for create/update
 class OrderItemSerializer(serializers.ModelSerializer):
-    product_variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.all(), required=False)
-    product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), required=False)
+    product_variant = serializers.PrimaryKeyRelatedField(
+        queryset=ProductVariant.objects.all(), required=False
+    )
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all(), required=False
+    )
 
     class Meta:
         model = OrderItem
@@ -19,8 +22,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Either 'product_variant' or 'product' must be provided.")
         return data
 
-# Used for create/update
+
+# ✅ Used for create/update
 class OrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, write_only=True)
+
     class Meta:
         model = Order
         fields = '__all__'
@@ -31,23 +37,20 @@ class OrderSerializer(serializers.ModelSerializer):
 
         for item_data in items_data:
             quantity = item_data.get("quantity", 1)
-            product_variant_id = item_data.get("product_variant")
-            product_id = item_data.get("product")
+            product_variant = item_data.get("product_variant")
+            product = item_data.get("product")
 
-            if product_variant_id:
-                product_variant = ProductVariant.objects.get(id=product_variant_id)
-            else:
-                if not product_id:
+            if not product_variant:
+                if not product:
                     raise serializers.ValidationError("Product ID is required if product_variant is not provided.")
-                product = Product.objects.get(id=product_id)
                 product_variant, _ = ProductVariant.objects.get_or_create(
                     product=product,
                     color="Default",
                     size="One Size",
-                    defaults={"extra_price": 0.00}
+                    defaults={"extra_price": Decimal('0.00')}
                 )
 
-            price = product_variant.product.base_price + (product_variant.extra_price or 0)
+            price = product_variant.product.base_price + (product_variant.extra_price or Decimal('0.00'))
             total_price = price * quantity
 
             OrderItem.objects.create(
@@ -60,7 +63,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
         return order
 
-# Used for GET (read-only): includes full nested detail
+
+# ✅ Used for GET (read-only): includes full nested product_variant
 class OrderItemDetailSerializer(serializers.ModelSerializer):
     product_variant = ProductVariantAdminSerializer(read_only=True)
 
@@ -68,6 +72,8 @@ class OrderItemDetailSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = ['id', 'product_variant', 'quantity', 'price_per_unit', 'total_price']
 
+
+# ✅ Used for GET (read-only): includes nested items
 class OrderDetailSerializer(serializers.ModelSerializer):
     items = OrderItemDetailSerializer(many=True, read_only=True)
 
