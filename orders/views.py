@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import Order
-from .serializers import OrderSerializer
+from .serializers import OrderSerializer, OrderDetailSerializer
 from django.http import Http404
 import logging
 
@@ -10,18 +10,23 @@ logger = logging.getLogger(__name__)
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
-    serializer_class = OrderSerializer
     permission_classes = [AllowAny]
     lookup_field = 'order_code'
+
+    def get_serializer_class(self):
+        if self.action in ['list', 'retrieve']:
+            return OrderDetailSerializer  # ✅ include nested items
+        return OrderSerializer  # ✅ for create/update
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         user = request.user if request.user.is_authenticated else None
 
-        # Validate guest fields
         if not user:
-            missing = [field for field in ['guest_name', 'guest_phone', 'guest_city', 'guest_address'] 
-                       if not data.get(field)]
+            missing = [
+                field for field in ['guest_name', 'guest_phone', 'guest_city', 'guest_address']
+                if not data.get(field)
+            ]
             if missing:
                 return Response(
                     {"detail": f"Missing required fields: {', '.join(missing)}"},
