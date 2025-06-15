@@ -41,9 +41,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         # Validate each item has required fields
         for i, item in enumerate(items):
-            if 'product' not in item:
+            if 'variant_id' not in item:  # Changed to variant_id
                 return Response({
-                    "detail": f"Item {i+1} is missing 'product' key (variant ID)"
+                    "detail": f"Item {i+1} is missing 'variant_id' key"
                 }, status=400)
                 
             if 'quantity' not in item:
@@ -51,8 +51,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "detail": f"Item {i+1} is missing quantity"
                 }, status=400)
         
-        # Extract variant IDs
-        variant_ids = [item['product'] for item in items]
+        # Extract variant IDs - using correct key
+        variant_ids = [item['variant_id'] for item in items]
         
         try:
             # Get variants with related data
@@ -83,7 +83,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order_total = Decimal('0.00')
             
             for item in items:
-                variant = variant_lookup[item['product']]
+                variant = variant_lookup[item['variant_id']]  # Use correct key
                 quantity = int(item['quantity'])
                 unit_price = variant.product.base_price + (variant.extra_price or Decimal('0.00'))
                 total_price = unit_price * quantity
@@ -102,7 +102,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     color=variant.color,
                     size=variant.size,
                     product_image=first_image.image_url if first_image else '',
-                    # Store product ID for direct reference
                     product_id=variant.product.id
                 ))
             
