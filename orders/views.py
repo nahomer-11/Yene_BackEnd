@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import Order, OrderItem
-from .serializers import OrderSerializer, OrderDetailSerializer
+from .serializers import OrderCreateSerializer, OrderDetailSerializer  # Updated imports
 from product.models import ProductVariant 
 from django.http import Http404
 import logging
@@ -20,54 +20,41 @@ class OrderViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
             return OrderDetailSerializer
-        return OrderSerializer
+        return OrderCreateSerializer  # Use our new simplified serializer
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        data = request.data.copy()
-        user = request.user if request.user.is_authenticated else None
-        
-        # Guest validation
-        if not user:
-            required = ['guest_name', 'guest_phone', 'guest_city', 'guest_address']
-            missing = [field for field in required if not data.get(field)]
-            if missing:
-                return Response({"detail": f"Missing fields: {', '.join(missing)}"}, status=400)
-        
-        # Validate items exist
-        if 'items' not in data or not data['items']:
-            return Response({"detail": "No items provided"}, status=400)
-        
-        # Use serializer for order-level validation
-        order_serializer = self.get_serializer(data=data)
-        order_serializer.is_valid(raise_exception=True)
-        
-        # Extract and validate items
-        items_data = data.get('items', [])
-        variant_ids = [item.get('variant_id') for item in items_data]
-        
-        # Validate all items have variant_ids
-        if any(vid is None for vid in variant_ids):
-            return Response({"detail": "All items must have a variant_id"}, status=400)
-        
         try:
-            # Fetch variants in bulk
+            # Use our simplified serializer for validation
+            serializer = OrderCreateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            
+            user = request.user if request.user.is_authenticated else None
+            
+            # Validate items
+            items = data.get('items', [])
+            if not items:
+                return Response({"detail": "No items provided"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Extract variant IDs
+            variant_ids = [item.get('variant_id') for item in items]
+            
+            # Validate all items have variant IDs
+            if not all(variant_ids):
+                return Response({"detail": "All items must have a variant_id"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Fetch variants
             variants = ProductVariant.objects.select_related('product').prefetch_related(
                 'images'
             ).in_bulk(variant_ids)
-        except Exception as e:
-            logger.error(f"Variant lookup error: {str(e)}")
-            return Response({"detail": "Error processing items"}, status=400)
-        
-        # Validate all variants exist
-        missing_ids = [vid for vid in variant_ids if vid not in variants]
-        if missing_ids:
-            return Response({
-                "detail": f"Variants not found: {', '.join(missing_ids)}"
-            }, status=400)
+            
+            # Check for missing variants
+            missing_ids = [vid for vid in variant_ids if vid not in variants]
+            if missing_ids:
+                return Response({"detail": f"Variants not found: {', '.join(missing_ids)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():
-            # Create order instance
+            # Create order
             order = Order.objects.create(
                 user=user,
                 delivery_eta_days=data.get('delivery_eta_days'),
@@ -79,12 +66,15 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status='draft'
             )
             
+            # Create order items
             order_items = []
             order_total = Decimal('0.00')
             
-            for item in items_data:
+            for item in items:
                 variant = variants[item['variant_id']]
                 quantity = int(item['quantity'])
+                
+                # Calculate prices
                 unit_price = variant.product.base_price + (variant.extra_price or Decimal('0.00'))
                 total_price = unit_price * quantity
                 order_total += total_price
@@ -109,12 +99,21 @@ class OrderViewSet(viewsets.ModelViewSet):
             OrderItem.objects.bulk_create(order_items)
             order.total_price = order_total
             order.save()
-        
-        # Return detailed response
-        response_serializer = OrderDetailSerializer(order)
-        headers = self.get_success_headers(response_serializer.data)
-        return Response(response_serializer.data, status=201, headers=headers)
+            
+            # Return detailed response
+            return Response(
+                OrderDetailSerializer(order).data, 
+                status=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            logger.exception("Order creation failed")
+            return Response(
+                {"detail": "Internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
+    # Keep your existing get_queryset and retrieve methods
     def get_queryset(self):
         user = self.request.user
         if user.is_authenticated:
