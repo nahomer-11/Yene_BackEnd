@@ -39,7 +39,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not items:
             return Response({"detail": "No items provided"}, status=400)
         
-        # Validate item structure FIRST
+        # Validate each item has required fields
         for i, item in enumerate(items):
             if 'product' not in item:
                 return Response({
@@ -51,20 +51,23 @@ class OrderViewSet(viewsets.ModelViewSet):
                     "detail": f"Item {i+1} is missing quantity"
                 }, status=400)
         
-        # Extract variant IDs - use correct key 'product'
+        # Extract variant IDs
         variant_ids = [item['product'] for item in items]
         
         try:
-            # Get variants in bulk
+            # Get variants with related data
             variants = ProductVariant.objects.select_related('product').prefetch_related(
                 'images'
-            ).in_bulk(variant_ids, field_name='id')
+            ).filter(id__in=variant_ids)
+            
+            # Create lookup dictionary
+            variant_lookup = {str(v.id): v for v in variants}
         except Exception as e:
             logger.error(f"Variant lookup error: {str(e)}")
             return Response({"detail": "Error processing items"}, status=400)
         
         # Validate all variants exist
-        missing_ids = [vid for vid in variant_ids if vid not in variants]
+        missing_ids = [vid for vid in variant_ids if vid not in variant_lookup]
         if missing_ids:
             return Response({
                 "detail": f"Variants not found: {', '.join(missing_ids)}"
@@ -80,7 +83,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             order_total = Decimal('0.00')
             
             for item in items:
-                variant = variants[item['product']]
+                variant = variant_lookup[item['product']]
                 quantity = int(item['quantity'])
                 unit_price = variant.product.base_price + (variant.extra_price or Decimal('0.00'))
                 total_price = unit_price * quantity
@@ -98,7 +101,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     product_name=variant.product.name,
                     color=variant.color,
                     size=variant.size,
-                    product_image=first_image.image_url if first_image else ''
+                    product_image=first_image.image_url if first_image else '',
+                    # Store product ID for direct reference
+                    product_id=variant.product.id
                 ))
             
             # Bulk create items
