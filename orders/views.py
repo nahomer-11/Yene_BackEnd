@@ -1,8 +1,9 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
-from .models import Order
+from .models import Order, OrderItem
 from .serializers import OrderSerializer, OrderDetailSerializer
+from product.models import ProductVariant 
 from django.http import Http404
 import logging
 from django.db import transaction
