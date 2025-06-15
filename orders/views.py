@@ -19,9 +19,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
-            return OrderDetailSerializer  # ✅ include nested items
-        return OrderSerializer  # ✅ for create/update
-
+            return OrderDetailSerializer
+        return OrderSerializer
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -48,7 +47,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         variant_ids = [item.get('variant_id') for item in items_data]
         
         # Validate all items have variant_ids
-        if None in variant_ids:
+        if any(vid is None for vid in variant_ids):
             return Response({"detail": "All items must have a variant_id"}, status=400)
         
         try:
