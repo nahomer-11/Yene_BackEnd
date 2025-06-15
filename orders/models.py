@@ -4,6 +4,8 @@ from product.models import ProductVariant
 import uuid
 import random
 import string
+from django.core.validators import MinValueValidator
+
 
 # Generate unique order code like "YENE-2HF8K9LMQ7DT34WB"
 def generate_order_code():
@@ -32,7 +34,7 @@ class Order(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order_code = models.CharField(max_length=30, unique=True, default=generate_unique_order_code, editable=False)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', db_index=True)
     
     # Track the payment method and amount once confirmed externally
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHOD_CHOICES, blank=True)
@@ -58,6 +60,13 @@ class Order(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['order_code']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
     def __str__(self):
         return f"Order {self.order_code} - {self.status} - {self.paid_amount or 0} {self.payment_method}"
 
@@ -82,3 +91,19 @@ class OrderItem(models.Model):
     color = models.CharField(max_length=50)
     size = models.CharField(max_length=20)
     product_image = models.URLField(blank=True)
+
+    product_id = models.UUIDField(editable=False)
+    
+    # Add validation
+    quantity = models.IntegerField(validators=[MinValueValidator(1)])
+    price_per_unit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0.01)]
+    )
+    
+    # Add index for product reference
+    class Meta:
+        indexes = [
+            models.Index(fields=['product_id']),
+        ]
