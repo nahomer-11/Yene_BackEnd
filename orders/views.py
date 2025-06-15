@@ -35,55 +35,56 @@ class OrderViewSet(viewsets.ModelViewSet):
             if missing:
                 return Response({"detail": f"Missing fields: {', '.join(missing)}"}, status=400)
         
-        items = data.get('items', [])
-        if not items:
+        # Validate items exist
+        if 'items' not in data or not data['items']:
             return Response({"detail": "No items provided"}, status=400)
         
-        # Validate each item has required fields
-        for i, item in enumerate(items):
-            if 'variant_id' not in item:  # Changed to variant_id
-                return Response({
-                    "detail": f"Item {i+1} is missing 'variant_id' key"
-                }, status=400)
-                
-            if 'quantity' not in item:
-                return Response({
-                    "detail": f"Item {i+1} is missing quantity"
-                }, status=400)
+        # Use serializer for order-level validation
+        order_serializer = self.get_serializer(data=data)
+        order_serializer.is_valid(raise_exception=True)
         
-        # Extract variant IDs - using correct key
-        variant_ids = [item['variant_id'] for item in items]
+        # Extract and validate items
+        items_data = data.get('items', [])
+        variant_ids = [item.get('variant_id') for item in items_data]
+        
+        # Validate all items have variant_ids
+        if None in variant_ids:
+            return Response({"detail": "All items must have a variant_id"}, status=400)
         
         try:
-            # Get variants with related data
+            # Fetch variants in bulk
             variants = ProductVariant.objects.select_related('product').prefetch_related(
                 'images'
-            ).filter(id__in=variant_ids)
-            
-            # Create lookup dictionary
-            variant_lookup = {str(v.id): v for v in variants}
+            ).in_bulk(variant_ids)
         except Exception as e:
             logger.error(f"Variant lookup error: {str(e)}")
             return Response({"detail": "Error processing items"}, status=400)
         
         # Validate all variants exist
-        missing_ids = [vid for vid in variant_ids if vid not in variant_lookup]
+        missing_ids = [vid for vid in variant_ids if vid not in variants]
         if missing_ids:
             return Response({
                 "detail": f"Variants not found: {', '.join(missing_ids)}"
             }, status=400)
 
         with transaction.atomic():
-            # Create order
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            order = serializer.save(user=user)
+            # Create order instance
+            order = Order.objects.create(
+                user=user,
+                delivery_eta_days=data.get('delivery_eta_days'),
+                customer_note=data.get('customer_note', ''),
+                guest_name=data.get('guest_name'),
+                guest_phone=data.get('guest_phone'),
+                guest_city=data.get('guest_city'),
+                guest_address=data.get('guest_address'),
+                status='draft'
+            )
             
             order_items = []
             order_total = Decimal('0.00')
             
-            for item in items:
-                variant = variant_lookup[item['variant_id']]  # Use correct key
+            for item in items_data:
+                variant = variants[item['variant_id']]
                 quantity = int(item['quantity'])
                 unit_price = variant.product.base_price + (variant.extra_price or Decimal('0.00'))
                 total_price = unit_price * quantity
