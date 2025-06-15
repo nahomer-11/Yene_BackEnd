@@ -32,9 +32,31 @@ class ProductVariantImageAdminViewSet(viewsets.ModelViewSet):
 
 # ✅ Updated to return nested variant info in detail endpoint
 class OrderAdminViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.prefetch_related('items__product_variant__product', 'items__product_variant__images')
+    queryset = Order.objects.prefetch_related('items').select_related('user').order_by('-created_at')
     permission_classes = [IsAdminUser]
     lookup_field = 'order_code'
+
+    def partial_update(self, request, *args, **kwargs):
+        order = self.get_object()
+        new_status = request.data.get('status')
+        
+        # Validate status transition
+        valid_transitions = {
+            'draft': ['pending_half', 'cancelled'],
+            'pending_half': ['half_paid', 'cancelled'],
+            'half_paid': ['awaiting_full', 'completed', 'cancelled'],
+            'awaiting_full': ['completed', 'cancelled'],
+            'completed': [],
+            'cancelled': []
+        }
+        
+        if new_status and new_status not in valid_transitions[order.status]:
+            return Response(
+                {"detail": f"Invalid status transition from {order.status} to {new_status}"},
+                status=400
+            )
+        
+        return super().partial_update(request, *args, **kwargs)
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
