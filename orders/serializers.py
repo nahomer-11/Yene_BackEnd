@@ -13,6 +13,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
         queryset=Product.objects.all(), required=False
     )
 
+    variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=ProductVariant.objects.all(),
+        source='product_variant',
+        required=True,
+        write_only=True
+    )
+
     def validate_quantity(self, value):
         if value < 1:
             raise serializers.ValidationError("Quantity must be at least 1")
@@ -20,7 +27,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['product_variant', 'product', 'quantity']
+        fields = ['variant_id', 'quantity'] 
 
 
 
@@ -30,7 +37,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        read_only_fields = ['order_code', 'status', 'total_price', 'paid_amount', 'payment_method', 'user']
+        fields = '__all__'
+        read_only_fields = ['order_code', 'status', 'total_price', 'paid_amount', 'payment_method', 'user','created_at', 'updated_at']
 
 
 # ✅ Used for GET (read-only): includes full nested product_variant
