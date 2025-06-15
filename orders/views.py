@@ -18,55 +18,89 @@ class OrderViewSet(viewsets.ModelViewSet):
             return OrderDetailSerializer  # ✅ include nested items
         return OrderSerializer  # ✅ for create/update
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
         user = request.user if request.user.is_authenticated else None
-    
+        
         # Guest validation
         if not user:
             required = ['guest_name', 'guest_phone', 'guest_city', 'guest_address']
             missing = [field for field in required if not data.get(field)]
             if missing:
                 return Response({"detail": f"Missing fields: {', '.join(missing)}"}, status=400)
-    
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        order = serializer.save(user=user)
-    
-        items = request.data.get('items', [])
+        
+        items = data.get('items', [])
         if not items:
             return Response({"detail": "No items provided"}, status=400)
-    
-        order_total = 0
-    
-        for item in items:
-            try:
-                variant = ProductVariant.objects.select_related('product').get(id=item['product_variant'])
-            except ProductVariant.DoesNotExist:
-                return Response({"detail": f"Variant {item['product_variant']} not found"}, status=400)
-    
-            quantity = item['quantity']
-            unit_price = variant.product.base_price + variant.extra_price
-            total_price = unit_price * quantity
-            order_total += total_price
-    
-            OrderItem.objects.create(
-                order=order,
-                product_variant=variant,
-                quantity=quantity,
-                price_per_unit=unit_price,
-                total_price=total_price,
-                product_name=variant.product.name,
-                color=variant.color,
-                size=variant.size,
-                product_image=variant.images.first().image_url if variant.images.exists() else ''
+        
+        # Prefetch variants in bulk
+        variant_ids = [item['product'] for item in items]
+        
+        # Cache variants for 5 minutes to handle repeated requests
+        cache_key = f"variants_{hash(tuple(variant_ids))}"
+        variants = cache.get(cache_key)
+        
+        if not variants:
+            variants = ProductVariant.objects.select_related('product').prefetch_related(
+                'images'
+            ).filter(id__in=variant_ids)
+            variants = {str(v.id): v for v in variants}
+            cache.set(cache_key, variants, 300)
+        
+        # Validate all variants exist
+        missing_variants = [vid for vid in variant_ids if vid not in variants]
+        if missing_variants:
+            return Response(
+                {"detail": f"Variants not found: {', '.join(missing_variants)}"},
+                status=400
             )
-    
-        order.total_price = order_total
-        order.save()
-    
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=201, headers=headers)
+        
+        with transaction.atomic():
+            # Create order first
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            order = serializer.save(user=user)
+            
+            order_items = []
+            order_total = Decimal('0.00')
+            
+            for item in items:
+                variant = variants[item['product']]
+                quantity = item['quantity']
+                
+                # Calculate pricing
+                unit_price = variant.product.base_price + variant.extra_price
+                total_price = unit_price * quantity
+                order_total += total_price
+                
+                # Get first image if exists
+                first_image = variant.images.first()
+                
+                order_items.append(OrderItem(
+                    order=order,
+                    product_variant=variant,
+                    product_id=variant.product.id,  # Add product reference
+                    quantity=quantity,
+                    price_per_unit=unit_price,
+                    total_price=total_price,
+                    product_name=variant.product.name,
+                    color=variant.color,
+                    size=variant.size,
+                    product_image=first_image.image_url if first_image else ''
+                ))
+            
+            # Bulk create for performance
+            OrderItem.objects.bulk_create(order_items)
+            
+            # Update order total
+            order.total_price = order_total
+            order.save()
+        
+        # Return detailed response
+        response_serializer = OrderDetailSerializer(order)
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=201, headers=headers)
 
     def get_queryset(self):
         user = self.request.user
