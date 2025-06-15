@@ -61,6 +61,7 @@ class Order(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        fields = '__all__'
         indexes = [
             models.Index(fields=['order_code']),
             models.Index(fields=['created_at']),
